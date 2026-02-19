@@ -1,9 +1,6 @@
 # News_collecting_GPT
 
-本项目记录一个“专用 GPT”在日常研报整理（数据中心 AIDC + 风电）工作流中的完整指令集与配套的“知识库构建”脚本，目标是把“每天的新闻搜集 → 结构化输出 → 累积成可检索的研究知识库”，做成稳定、可复用、可审计的流程。
-
-专用 GPT 入口：
-https://chatgpt.com/g/g-691bc3ebeb80819190eab1dc2158751d-xin-wen
+本项目记录“专用 GPT 《[新闻](https://chatgpt.com/g/g-691bc3ebeb80819190eab1dc2158751d-xin-wen)》”在日常研报整理（数据中心 AIDC + 风电）工作流中的完整指令集与配套的“知识库构建”脚本，目标是把“每天的新闻搜集 → 结构化输出 → 累积成可检索的研究知识库”，做成稳定、可复用、可审计的流程。
 
 
 ## 1. 核心：专用 GPT 用到的三个文件
@@ -15,23 +12,13 @@ https://chatgpt.com/g/g-691bc3ebeb80819190eab1dc2158751d-xin-wen
 - A) hindsight 标注集生成（系统指令）：用于“回看”一个时间段内的初次报道新闻，生成闭源 LLM 可用的标注集（Major / NotMajor / Unlabeled），并要求输出固定字段模板（news_id、axes_and_direction、subsequent_impact_path、observable_features_at_time、confirmations、sources 等）。
 - B) 日常新闻收集（执行指令）：用于按 UTC+8（北京时间）在指定时间范围内做跨地区扫描与筛选，并按严格顺序输出；其中对“重要性”的筛选规则会调用 `AIDC重要性.md`（数据中心场景强制参考）。
 
-源码：
-- https://raw.githubusercontent.com/Haibo114Luo/News_collecting_GPT/main/%E6%8C%87%E4%BB%A4/%E6%8C%87%E4%BB%A4.md
-
 (2) `指令/AIDC重要性.md`
 用途：定义“重要性”如何生成（数据中心 AIDC 专用的判定量表/规则集）。
 它把“重大新闻”约束为：能改变行业预期的硬变量（装机/投运节奏、成本结构、供电/并网等硬约束、供需拐点），并给出分层判断标准与项目升级规则（例如：涉及 FERC/ISO/公用事业、电价机制、排队/并网规则、供电硬约束、项目级大额投资与可交付时间表等）。
 
-源码：
-- https://raw.githubusercontent.com/Haibo114Luo/News_collecting_GPT/main/%E6%8C%87%E4%BB%A4/AIDC%E9%87%8D%E8%A6%81%E6%80%A7.md
-
 (3) `指令/格式.txt`
 用途：输出“格式校正器”。它给出固定的栏目/层级/字段与示例，要求最终输出必须落在一个 markdown code block 内，并用指定层级组织（H1 日期 → H2 地区 → H3 新闻序号），从而最大限度减少“模型自由发挥”导致的结构漂移。
 它同时定义了“类别 tag 列表”和每条新闻必须包含的字段（日期/地区/类别/事件/影响/来源 URL），并要求每条新闻必须给可点击 URL。
-
-源码：
-- https://raw.githubusercontent.com/Haibo114Luo/News_collecting_GPT/main/%E6%8C%87%E4%BB%A4/%E6%A0%BC%E5%BC%8F.txt
-
 
 ## 2. 重点：AIDC “重要性”如何生成（判定逻辑）
 
@@ -75,12 +62,8 @@ hindsight 标注集必须是 schema 化记录，否则闭源 LLM 的训练样本
 本仓库提供了把“日常 markdown 输出”变成“单文件知识库”的脚本：
 
 - `md_to_txt/to_txt.ipynb`：遍历指定文件夹列表，把所有 `.md/.txt` 按文件写入到 `merged_context.txt`，并在每段前写入分隔头（SOURCE + FILE）。默认示例路径来自你的本地目录结构（可自行改成你的路径）。
-  源码：
-  https://raw.githubusercontent.com/Haibo114Luo/News_collecting_GPT/main/md_to_txt/to_txt.ipynb
 
 - `md_to_txt/merged_context.txt`：示例合并结果（展示了合并后的段落组织方式：分隔符 + 原始 markdown 内容）。
-  源码：
-  https://raw.githubusercontent.com/Haibo114Luo/News_collecting_GPT/main/md_to_txt/merged_context.txt
 
 为什么一定要做 `md → txt`：
 - 让“历史研究资料”从一堆分散的日更 markdown 变成一个可直接投喂/可检索的单文件上下文；
@@ -93,6 +76,7 @@ hindsight 标注集必须是 schema 化记录，否则闭源 LLM 的训练样本
 步骤 1：配置专用 GPT
 - 把 `指令/指令.md` 作为主指令来源（包含：hindsight 与日常新闻收集两套逻辑）。
 - 把 `指令/格式.txt` 与 `指令/AIDC重要性.md` 作为“可被引用的知识文件”（指令里明确要求读取它们；读取失败要报错）。
+- 《[新闻](https://chatgpt.com/g/g-691bc3ebeb80819190eab1dc2158751d-xin-wen)》是已经照此搭建好的专用gpt。
 
 步骤 2：执行日常新闻收集
 - 在对话里给出行业、时间范围（UTC+8），按指令的地区扫描顺序输出；
