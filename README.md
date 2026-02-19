@@ -1,0 +1,136 @@
+# News_collecting_GPT
+
+本项目记录一个“专用 GPT”在日常研报整理（数据中心 AIDC + 风电）工作流中的完整指令集与配套的“知识库构建”脚本，目标是把“每天的新闻搜集 → 结构化输出 → 累积成可检索的研究知识库”，做成稳定、可复用、可审计的流程。
+
+专用 GPT 入口：
+https://chatgpt.com/g/g-691bc3ebeb80819190eab1dc2158751d-xin-wen
+
+
+## 1. 核心：专用 GPT 用到的三个文件
+
+这三个文件共同定义了：如何搜集新闻、如何判定“重要性”、以及如何强制输出成可复用的 schema。
+
+(1) `指令/指令.md`
+用途：这是“总指令”，同一文件内包含两套逻辑，务必区分：
+- A) hindsight 标注集生成（系统指令）：用于“回看”一个时间段内的初次报道新闻，生成闭源 LLM 可用的标注集（Major / NotMajor / Unlabeled），并要求输出固定字段模板（news_id、axes_and_direction、subsequent_impact_path、observable_features_at_time、confirmations、sources 等）。
+- B) 日常新闻收集（执行指令）：用于按 UTC+8（北京时间）在指定时间范围内做跨地区扫描与筛选，并按严格顺序输出；其中对“重要性”的筛选规则会调用 `AIDC重要性.md`（数据中心场景强制参考）。
+
+源码：
+- https://raw.githubusercontent.com/Haibo114Luo/News_collecting_GPT/main/%E6%8C%87%E4%BB%A4/%E6%8C%87%E4%BB%A4.md
+
+(2) `指令/AIDC重要性.md`
+用途：定义“重要性”如何生成（数据中心 AIDC 专用的判定量表/规则集）。
+它把“重大新闻”约束为：能改变行业预期的硬变量（装机/投运节奏、成本结构、供电/并网等硬约束、供需拐点），并给出分层判断标准与项目升级规则（例如：涉及 FERC/ISO/公用事业、电价机制、排队/并网规则、供电硬约束、项目级大额投资与可交付时间表等）。
+
+源码：
+- https://raw.githubusercontent.com/Haibo114Luo/News_collecting_GPT/main/%E6%8C%87%E4%BB%A4/AIDC%E9%87%8D%E8%A6%81%E6%80%A7.md
+
+(3) `指令/格式.txt`
+用途：输出“格式校正器”。它给出固定的栏目/层级/字段与示例，要求最终输出必须落在一个 markdown code block 内，并用指定层级组织（H1 日期 → H2 地区 → H3 新闻序号），从而最大限度减少“模型自由发挥”导致的结构漂移。
+它同时定义了“类别 tag 列表”和每条新闻必须包含的字段（日期/地区/类别/事件/影响/来源 URL），并要求每条新闻必须给可点击 URL。
+
+源码：
+- https://raw.githubusercontent.com/Haibo114Luo/News_collecting_GPT/main/%E6%8C%87%E4%BB%A4/%E6%A0%BC%E5%BC%8F.txt
+
+
+## 2. 重点：AIDC “重要性”如何生成（判定逻辑）
+
+在日常新闻收集阶段，“重要性”不是凭热度，而是按 `AIDC重要性.md` 的规则把新闻映射到“是否显著改变边际预期”的问题上：
+
+第一层：看它是否改变至少一条硬变量的预期方向或约束强度
+- pace：装机/投运节奏（accelerate / delay / mixed）
+- cost：CAPEX/OPEX/电力成本（up / down / mixed）
+- constraint：供电/并网/设备/许可/水/土地等硬约束（tighten / loosen / mixed）
+- supply_demand：区域供需、容量/电价压力（tighten / loosen / mixed）
+
+第二层：优先级排序（用于“同一地区内的排序”）
+- 监管/市场规则与系统性约束（FERC/ISO/TSO/公用事业/电价机制/并网队列/输电规划与成本分摊）优先级最高。
+- 明确的硬量变化（MW、时间表、并网窗口、价格条款）优先于泛泛表态。
+- 能跨区域/跨电网/跨供应链扩散的事件，优先于单点地方新闻。
+
+第三层：项目级升级（把“公司新闻”提升为“行业重要新闻”的门槛）
+当新闻满足“规模大 + 兑现路径清晰 + 硬约束相关 + 可验证来源”时，提升重要性并靠前排序（例如：超大负荷并网、长期 PPA 结构、明确 COD/energization 时间窗、关键设备交付约束）。
+
+在输出上体现为：
+- 每个地区只保留“重要性最高”的最多 5 条；
+- 若连续 3 个地区没有任何重要新闻，则触发停止规则（不强行凑数）。
+
+
+## 3. “格式”为什么关键：用 schema 把输出锁死，才能复用
+
+这个工作流的关键不是“让模型多写”，而是“让模型永远写成同一种结构”，原因有三：
+
+(1) 质量控制（QC）
+字段固定后，你可以快速检查：是否缺 URL、是否类别乱跑、是否地区顺序错、是否把推测当事实。
+
+(2) 可累积为知识库
+每天输出的 markdown 如果结构稳定，就可以被自动合并、长期沉淀，并在后续检索/总结时复用，而不需要每次从零开始“读一堆散文”。
+
+(3) 可训练/可标注
+hindsight 标注集必须是 schema 化记录，否则闭源 LLM 的训练样本会出现字段缺失与标签污染。
+
+
+## 4. 输出 schema 与“md_to_txt 知识库”的必要性
+
+本仓库提供了把“日常 markdown 输出”变成“单文件知识库”的脚本：
+
+- `md_to_txt/to_txt.ipynb`：遍历指定文件夹列表，把所有 `.md/.txt` 按文件写入到 `merged_context.txt`，并在每段前写入分隔头（SOURCE + FILE）。默认示例路径来自你的本地目录结构（可自行改成你的路径）。
+  源码：
+  https://raw.githubusercontent.com/Haibo114Luo/News_collecting_GPT/main/md_to_txt/to_txt.ipynb
+
+- `md_to_txt/merged_context.txt`：示例合并结果（展示了合并后的段落组织方式：分隔符 + 原始 markdown 内容）。
+  源码：
+  https://raw.githubusercontent.com/Haibo114Luo/News_collecting_GPT/main/md_to_txt/merged_context.txt
+
+为什么一定要做 `md → txt`：
+- 让“历史研究资料”从一堆分散的日更 markdown 变成一个可直接投喂/可检索的单文件上下文；
+- 合并时保留 SOURCE/FILE 边界，方便回溯与引用；
+- 便于后续做月度/季度 catch-up（同一套资料既能日更，也能做中长期复盘）。
+
+
+## 5. Workflow
+
+步骤 1：配置专用 GPT
+- 把 `指令/指令.md` 作为主指令来源（包含：hindsight 与日常新闻收集两套逻辑）。
+- 把 `指令/格式.txt` 与 `指令/AIDC重要性.md` 作为“可被引用的知识文件”（指令里明确要求读取它们；读取失败要报错）。
+
+步骤 2：执行日常新闻收集
+- 在对话里给出行业、时间范围（UTC+8），按指令的地区扫描顺序输出；
+- 每条新闻必须给 URL；
+- 每个地区最多 5 条重要新闻；连续 3 个地区无重要新闻则停止。
+
+步骤 3：把产出的 markdown 落盘到本地日更文件夹
+- AIDC 与 Wind 分开存放（示例结构见 notebook 默认路径）。
+
+步骤 4：运行 `md_to_txt/to_txt.ipynb` 更新知识库
+- 生成/更新 `merged_context.txt`；
+- 该文件可作为“研究资料全集”，用于后续总结、回看与检索。
+
+步骤 5（可选）：做 hindsight 标注集
+- 直接使用 `指令/指令.md` 的 hindsight 部分，对指定时间段的“初次报道”新闻做 Major/NotMajor/Unlabeled 标注；
+- 产出用于闭源 LLM 的标注样本。
+
+补充：`强化标注/` 目录下存放了若干按地区/行业命名的标注文件（含 gpt/gemini 命名版本），用于对照与迭代标注质量。
+示例（美国风电 gemini 标注）：
+https://raw.githubusercontent.com/Haibo114Luo/News_collecting_GPT/main/%E5%BC%BA%E5%8C%96%E6%A0%87%E6%B3%A8/%E7%BE%8E%E5%9B%BD%E9%A3%8E%E7%94%B5gemini.md
+
+
+## 6. 目录结构（仓库内）
+
+- `指令/`：专用 GPT 的三份核心文件（指令、重要性、格式）
+- `md_to_txt/`：把日更 markdown 合并为单一 txt 知识库的 notebook 与示例输出
+- `强化标注/`：hindsight 标注集与迭代产物（用于训练/评估闭源 LLM）
+- `实际案例/`：预留用于放真实对话与输出样例（如需可继续补充）
+
+
+## 7. 使用约束与约定
+
+- 时区：日常新闻收集以 UTC+8（北京时间）为准。
+- 不得捏造：允许“无重要新闻”的地区结果；不能为了填满而输出臆造信息。
+- 一切格式冲突以 `指令/指令.md` 为准；输出示例以 `格式.txt` 为准。
+- 对数据中心行业，“重要性”判定必须参考 `AIDC重要性.md`。
+
+
+## 8. 免责声明
+
+本项目用于行业情报整理与研究工作流固化，不构成投资建议。所有事实性判断以来源链接为准。
